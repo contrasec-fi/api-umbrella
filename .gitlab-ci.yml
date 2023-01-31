@@ -1,0 +1,57 @@
+# Copyright (C) Contrasec 2022
+#.gitlab-ci.yml
+
+# Deployment script
+
+.deploy_template: &deploy_template
+  tags:
+    - profirator
+  #  - kubernetes #Only runners with this tag are used
+  image: bitnami/kubectl:latest
+  stage: deploy
+  script:
+    - echo "$KUBE" > config  # Echo Kubeconfig to a file
+                             # so it can be used by kubectl
+    
+    # Replace DOMAIN and NAMESPACE placeholders in resource.yaml with staging or production values
+    - sed -i "s~DOMAIN~${DOMAIN}~g" resource.yaml
+    - sed -i "s~NAMESPACE~${NAMESPACE}~g" resource.yaml
+    
+    # Create secret for umbrella (maxmind license)
+    - kubectl create secret generic maxmind-license --from-literal=license=${MAXMIND_LICENSE} -n ${NAMESPACE} --kubeconfig config || true
+    # Apply file into kubernetes with kubectl
+    - kubectl apply -f resource.yaml --namespace ${NAMESPACE} --kubeconfig config
+
+# Stages
+  
+stages:
+  - deploy
+
+
+# Staging deployment stage
+
+do deploy staging:
+  <<: *deploy_template
+  variables:
+    NAMESPACE: odala-staging
+    KUBE: $KUBECONFIG                 # Get KUBECONFIG from Gitlab CI/CD variable
+    DOMAIN: $DOMAIN_STAGING           # Get DOMAIN_STAGING from Gitlab CI/CD variable
+    MAXMIND_LICENSE: $MAXMIND_LICENSE # Get MAXMIND_LICENSE from Gitlab CI/CD variable
+  only:
+    #- /^C./                           # Every branch that starts with C #################################################
+    - /^odala-staging./              # Only odala-staging              #################################################
+    
+
+# Production deployment stage
+
+do deploy prod:
+  <<: *deploy_template
+  variables:
+    NAMESPACE: odala-production
+    KUBE: $KUBECONFIG                 # Get KUBECONFIG from Gitlab CI/CD variable
+    DOMAIN: $DOMAIN_PRODUCTION        # Get DOMAIN_PRODUCTION from Gitlab CI/CD variable
+    MAXMIND_LICENSE: $MAXMIND_LICENSE # Get MAXMIND_LICENSE from Gitlab CI/CD variable
+  only:
+    #- /^R./                           # Every branch that starts with R #################################################
+    - odala-production               # Only odala-production           #################################################
+  when: manual                        # Require manual step in pipeline to deploy to prod. Remove if not needed

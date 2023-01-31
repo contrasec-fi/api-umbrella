@@ -1,0 +1,178 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: umbrella
+  name: umbrella
+spec:
+  selector:
+    matchLabels:
+      app: umbrella
+  replicas: 1
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: umbrella
+    spec:
+      containers:
+      - env:
+        - name: MAXMIND_LICENSE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: maxmind-license
+              key: license
+        image: fiware/api-umbrella:0.18.1
+        imagePullPolicy: IfNotPresent
+        name: umbrella
+        lifecycle:
+            postStart:
+              exec:
+                command:
+                  - "sh"
+                  - "-c"
+                  - >
+                    sed -i 's/86400/864000000/' /app/bin/api-umbrella-geoip-auto-updater;
+        volumeMounts:
+        - name: umbrella-config
+          mountPath: /etc/api-umbrella
+      volumes:
+      - name: umbrella-config
+        configMap:
+          name: api-umbrella
+          items:
+          - key: api-umbrella.yml
+            path: api-umbrella.yml
+      restartPolicy: Always
+status: {}
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: umbrella
+  name: umbrella
+spec:
+  ports:
+  - name: "80"
+    port: 80
+    targetPort: 80
+  selector:
+    app: umbrella
+status:
+  loadBalancer: {}
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-production
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header Referrer-Policy 'same-origin';
+      add_header Content-Security-Policy "default-src 'self';";
+    nginx.ingress.kubernetes.io/enable-modsecurity: "true"
+    nginx.ingress.kubernetes.io/enable-owasp-core-rules: "true"
+    nginx.ingress.kubernetes.io/modsecurity-snippet: |
+      SecRuleEngine On
+      SecAuditEngine On
+      SecAuditLogFormat JSON
+      #SecAuditLog /dev/stdout
+      SecAction "id:900000, phase:1, nolog, pass, t:none, setvar:tx.paranoia_level=1, setvar:tx.allowed_methods=GET PUT POST DELETE PATCH HEAD OPTIONS"
+      SecRule REQUEST_URI "@beginsWith /ngsi-ld/v1/entities" "id:900003, phase:2, pass, nolog, ctl:ruleRemoveById=920330"
+      SecRule REQUEST_URI "@beginsWith /api-umbrella/v1/analytics/" "id:900004, phase:2, pass, nolog, ctl:ruleRemoveById=942190"
+      SecRule REQUEST_URI "@beginsWith /api-umbrella/v1/analytics/" "id:900005, phase:2, pass, nolog, ctl:ruleRemoveById=942100"
+      SecRule REQUEST_URI "@beginsWith /admin/stats/" "id:900006, phase:2, pass, nolog, ctl:ruleRemoveById=942190"
+      SecRule REQUEST_URI "@beginsWith /admin/stats/" "id:900007, phase:2, pass, nolog, ctl:ruleRemoveById=942100"
+      
+    nginx.ingress.kubernetes.io/proxy-buffer-size: 8k
+    nginx.ingress.kubernetes.io/use-geoip: "false"
+    nginx.ingress.kubernetes.io/use-geoip2: "true"
+  name: umbrella
+spec:
+  rules:
+  - host: umbrella.DOMAIN
+    http:
+      paths:
+      - backend:
+          service:
+            name: umbrella
+            port:
+              number: 80
+        path: /
+        pathType: Prefix
+  - host: scorpio.DOMAIN
+    http:
+      paths:
+      - backend:
+          service:
+            name: umbrella
+            port:
+              number: 80
+        path: /
+        pathType: Prefix
+  tls:
+  - hosts:
+    - umbrella.DOMAIN
+    - scorpio.DOMAIN
+    secretName: scorpio-cert
+    secretName: umbrella-cert
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-umbrella
+data:
+  api-umbrella.yml: |
+    app_env: production
+    
+    services:
+      - router
+      - web
+    
+    http_port: 80
+    #https_port: 443
+    
+    hosts:
+      - hostname: umbrella.DOMAIN
+        default: true
+        http_strict_transport_security: max-age=31536000; includeSubDomains
+    
+    gatekeeper:
+        api_key_methods:
+            - fiware-oauth2
+            - header
+            - getParam
+        api_key_cache: false
+        default_idp:
+            backend_name: fiware-oauth2
+            host: https://accounts.DOMAIN
+    
+    mongodb:
+        url: "mongodb://mongodb:27017/api_umbrella"
+    
+    elasticsearch:
+        api_version: 5
+        hosts:
+            - http://elasticsearch.NAMESPACE.svc.cluster.local:9200
+    
+    router:
+        web_app_host: "umbrella.DOMAIN"
+    
+    log:
+      destination: console
+    
+    nginx:
+      large_client_header_buffers: 8 64k
+      proxy_connect_timeout: 90
+      proxy_read_timeout: 90
+      proxy_send_timeout: 90
+      server_names_hash_bucket_size: 128
+      ssl_protocols: "TLSv1.2"
+      ssl_ciphers: "ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA:ECDHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:DES-CBC3-SHA:!DSS"
