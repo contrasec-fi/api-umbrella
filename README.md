@@ -1,6 +1,6 @@
 Components- API-Umbrella
 
-for the ODALA project. You can find details in the [Documentation](https://gitlab.publiccode.solutions/odala-public/documentation/-/tree/main/AccessControl)
+for the ODALA project. You can find details in the [Documentation](https://gitlab.publiccode.solutions/odala-public/documentation/-/tree/main/AccessControl).
 
 © 2022 Contrasec Oy
 
