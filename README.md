@@ -6,7 +6,9 @@ API Umbrella is an open source API management platform for exposing web service 
 
 You can find details in the [Documentation](https://gitlab.publiccode.solutions/odala-public/documentation/-/tree/main/AccessControl).
 
-© 2022 Contrasec Oy
+NOTE! this project is intended to be run from GitLab - hence the -gitlab-ci.yml. See the gitlab-ci file to understand what is needed; for example variables and secrets are picked up from GitLab CI/CD variables.
+
+© 2023 Contrasec Oy
 
 [License EUPL 1.2](https://eupl.eu/1.2/en/)
 
